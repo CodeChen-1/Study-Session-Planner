@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="A calm study session planner with a 25-minute focus timer, 5-minute breaks, and a manual completed-focus log.">
+  <title>Study Session Planner</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="layout">
+    <header class="page-header">
+      <h1>Study Session Planner</h1>
+      <p class="tagline">Run focus sessions, take short breaks, and log the focus you finish.</p>
+    </header>
+
+    <section class="panel timer-panel" id="timer-panel" data-phase="focus" aria-labelledby="timer-heading">
+      <h2 class="panel-title" id="timer-heading">Focus timer</h2>
+      <div class="timer-visual">
+        <svg class="ring" viewBox="0 0 240 240" aria-hidden="true" focusable="false">
+          <circle class="ring-track" cx="120" cy="120" r="104"></circle>
+          <circle class="ring-progress" id="ring-progress" cx="120" cy="120" r="104"></circle>
+        </svg>
+        <p class="phase-badge" id="phase-badge">Focus</p>
+        <div class="time-display" id="time-display" role="timer" aria-label="Time remaining">25:00</div>
+      </div>
+      <div class="controls" role="group" aria-label="Timer controls">
+        <button type="button" class="btn btn-primary" id="start-btn" aria-label="Start focus timer">Start</button>
+        <button type="button" class="btn btn-secondary" id="toggle-btn" aria-label="Pause timer" disabled>Pause</button>
+        <button type="button" class="btn btn-secondary" id="reset-btn" aria-label="Reset current phase timer" disabled>Reset</button>
+      </div>
+    </section>
+
+    <section class="panel log-panel" aria-labelledby="log-heading">
+      <h2 class="panel-title" id="log-heading">Completed focus log</h2>
+      <p class="today-total">Today&rsquo;s focus: <span class="today-minutes" id="today-total">0</span> min</p>
+      <form id="log-form" novalidate>
+        <label for="minutes-input">Minutes of completed focus</label>
+        <div class="log-row">
+          <input id="minutes-input" name="minutes" type="number" inputmode="numeric" min="1" max="1440" step="1" value="25" aria-describedby="log-hint log-error">
+          <button type="submit" class="btn btn-primary">Log focus</button>
+        </div>
+        <p class="hint" id="log-hint">Whole minutes, from 1 to 1,440.</p>
+        <p class="error" id="log-error" aria-live="polite"></p>
+      </form>
+      <ol class="entry-list" id="entry-list"></ol>
+      <p class="hint" id="entry-count"></p>
+    </section>
+  </main>
+
+  <div class="sr-only" id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
