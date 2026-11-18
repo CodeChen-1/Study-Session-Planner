@@ -51,11 +51,74 @@
         <p class="hint" id="export-hint">Export is unavailable because no focus sessions are logged yet.</p>
       </div>
     </section>
+
+    <section class="panel recall-panel" id="recall-panel" aria-labelledby="recall-heading">
+      <h2 class="panel-title" id="recall-heading">Recall Loop</h2>
+      <p class="hint recall-intro">Capture one question and its private answer. When you start focus, a due card asks you to recall it before you reveal the saved answer.</p>
+      <form id="recall-form" novalidate>
+        <div class="recall-field">
+          <label for="recall-question-input">Question to recall later</label>
+          <input id="recall-question-input" name="question" type="text" maxlength="200" autocomplete="off" aria-describedby="recall-question-hint recall-question-error">
+          <p class="hint" id="recall-question-hint">1 to 200 characters after trimming spaces.</p>
+          <p class="error" id="recall-question-error" aria-live="polite"></p>
+        </div>
+        <div class="recall-field">
+          <label for="recall-answer-input">Saved answer</label>
+          <textarea id="recall-answer-input" name="answer" rows="3" maxlength="2000" aria-describedby="recall-answer-hint recall-answer-error"></textarea>
+          <p class="hint" id="recall-answer-hint">1 to 2,000 characters. The answer stays hidden during review until you reveal it, and never leaves this device.</p>
+          <p class="error" id="recall-answer-error" aria-live="polite"></p>
+        </div>
+        <div class="recall-form-actions">
+          <button type="submit" class="btn btn-primary">Save recall card</button>
+        </div>
+      </form>
+      <div class="recall-saved" aria-labelledby="recall-saved-heading">
+        <h3 class="recall-subhead" id="recall-saved-heading">Saved questions</h3>
+        <p class="hint" id="recall-count"></p>
+        <ul class="recall-list" id="recall-list"></ul>
+      </div>
+    </section>
   </main>
+
+  <dialog class="recall-dialog" id="recall-dialog" aria-labelledby="recall-dialog-title" aria-describedby="recall-dialog-desc recall-question">
+    <div class="recall-dialog-body">
+      <div class="recall-dialog-head">
+        <h2 id="recall-dialog-title">Recall check</h2>
+        <button type="button" class="btn btn-secondary" id="recall-close" aria-label="Close recall check and keep the timer paused">Close</button>
+      </div>
+      <p class="hint" id="recall-dialog-desc">Answer from memory first. The saved answer stays hidden until you reveal it.</p>
+      <div class="recall-question-wrap">
+        <p class="recall-label">Question</p>
+        <p class="recall-question" id="recall-question"></p>
+      </div>
+      <div class="recall-field">
+        <label for="recall-attempt">Your written recall attempt</label>
+        <textarea id="recall-attempt" rows="4" maxlength="2000" aria-describedby="recall-attempt-hint recall-attempt-error"></textarea>
+        <p class="hint" id="recall-attempt-hint">Write something before revealing. This attempt is not saved.</p>
+        <p class="error" id="recall-attempt-error" aria-live="polite"></p>
+      </div>
+      <button type="button" class="btn btn-primary" id="recall-reveal" disabled>Reveal saved answer</button>
+      <div class="recall-answer-block" id="recall-answer-block" hidden>
+        <p class="recall-label">Saved answer</p>
+        <p class="recall-answer" id="recall-answer"></p>
+        <p class="recall-label" id="recall-rate-label">How did your recall go?</p>
+        <div class="recall-rating" id="recall-rating-group" role="group" aria-labelledby="recall-rate-label">
+          <button type="button" class="btn btn-secondary" data-rating="remembered">Remembered</button>
+          <button type="button" class="btn btn-secondary" data-rating="partly">Partly remembered</button>
+          <button type="button" class="btn btn-secondary" data-rating="missed">Missed</button>
+        </div>
+      </div>
+      <div class="recall-dialog-actions">
+        <button type="button" class="btn btn-secondary" id="recall-later">Not now, start focus</button>
+      </div>
+      <p class="sr-only" id="recall-dialog-status" role="status" aria-live="polite" aria-atomic="true"></p>
+    </div>
+  </dialog>
 
   <div class="sr-only" id="status" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <script src="csv.js"></script>
+  <script src="recall.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

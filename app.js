@@ -30,14 +30,33 @@
     minutesInput: document.getElementById('minutes-input'),
     logError: document.getElementById('log-error'),
     exportBtn: document.getElementById('export-btn'),
-    exportHint: document.getElementById('export-hint')
+    exportHint: document.getElementById('export-hint'),
+    recallForm: document.getElementById('recall-form'),
+    recallQuestionInput: document.getElementById('recall-question-input'),
+    recallAnswerInput: document.getElementById('recall-answer-input'),
+    recallQuestionError: document.getElementById('recall-question-error'),
+    recallAnswerError: document.getElementById('recall-answer-error'),
+    recallList: document.getElementById('recall-list'),
+    recallCount: document.getElementById('recall-count'),
+    recallDialog: document.getElementById('recall-dialog'),
+    recallQuestion: document.getElementById('recall-question'),
+    recallAttempt: document.getElementById('recall-attempt'),
+    recallAttemptError: document.getElementById('recall-attempt-error'),
+    recallReveal: document.getElementById('recall-reveal'),
+    recallAnswerBlock: document.getElementById('recall-answer-block'),
+    recallAnswer: document.getElementById('recall-answer'),
+    recallClose: document.getElementById('recall-close'),
+    recallLater: document.getElementById('recall-later'),
+    recallRatingGroup: document.getElementById('recall-rating-group'),
+    recallDialogStatus: document.getElementById('recall-dialog-status')
   };
 
   const state = {
     phase: 'focus',
     endsAt: null,
     remainingMs: PHASE_DURATIONS.focus,
-    entries: []
+    entries: [],
+    recallCards: []
   };
 
   let todayKey = localDateKey(new Date());
@@ -46,6 +65,9 @@
   let corruptWarned = false;
   let inconsistentWarned = false;
   let announceTimer = 0;
+  let dialogAnnounceTimer = 0;
+  let activeReviewCardId = null;
+  let pendingTimerAction = null;
 
   function localDateKey(date) {
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -129,7 +151,8 @@
         remainingMs: Math.round(currentRemainingMs()),
         endsAt: state.endsAt
       },
-      entries: state.entries
+      entries: state.entries,
+      recallCards: state.recallCards
     };
   }
 
@@ -197,6 +220,13 @@
       state.entries = data.entries.filter(isValidEntry).slice(-MAX_ENTRIES);
     }
 
+    const recallHelper = recallApi();
+    if (recallHelper) {
+      state.recallCards = recallHelper.normalizeCards(data.recallCards);
+    } else {
+      state.recallCards = Array.isArray(data.recallCards) ? data.recallCards : [];
+    }
+
     if (timer.running === true) {
       if (typeof timer.endsAt !== 'number' || !isFinite(timer.endsAt)) {
         warnCorruptData();
@@ -251,11 +281,21 @@
     if (isRunning() || state.remainingMs !== PHASE_DURATIONS[state.phase]) {
       return;
     }
+    if (maybeOpenReview('start')) {
+      return;
+    }
+    performStart(false);
+  }
+
+  function performStart(fromDialog) {
+    if (isRunning() || state.remainingMs !== PHASE_DURATIONS[state.phase]) {
+      return;
+    }
     const startHadFocus = document.activeElement === els.startBtn;
     state.endsAt = Date.now() + state.remainingMs;
     lastAutosave = Date.now();
     renderAll();
-    if (startHadFocus) {
+    if (startHadFocus || fromDialog) {
       els.toggleBtn.focus();
     }
     announce(phaseName(state.phase) + ' timer started.');
@@ -282,9 +322,22 @@
     if (isRunning() || state.remainingMs <= 0 || state.remainingMs === PHASE_DURATIONS[state.phase]) {
       return;
     }
+    if (maybeOpenReview('resume')) {
+      return;
+    }
+    performResume(false);
+  }
+
+  function performResume(fromDialog) {
+    if (isRunning() || state.remainingMs <= 0 || state.remainingMs === PHASE_DURATIONS[state.phase]) {
+      return;
+    }
     state.endsAt = Date.now() + state.remainingMs;
     lastAutosave = Date.now();
     renderAll();
+    if (fromDialog) {
+      els.toggleBtn.focus();
+    }
     announce(phaseName(state.phase) + ' timer resumed.');
     save();
   }
@@ -436,9 +489,336 @@
     announce('Exported ' + count + ' focus entries to ' + filename + '.');
   }
 
+  function recallApi() {
+    return (typeof window !== 'undefined' && window.StudyRecall) || null;
+  }
+
+  function announceDialog(message) {
+    if (!els.recallDialogStatus) {
+      return;
+    }
+    window.clearTimeout(dialogAnnounceTimer);
+    els.recallDialogStatus.textContent = '';
+    dialogAnnounceTimer = window.setTimeout(() => {
+      els.recallDialogStatus.textContent = message;
+    }, 100);
+  }
+
+  function previewQuestion(text) {
+    const limit = 80;
+    return text.length <= limit ? text : text.slice(0, limit - 1) + '\u2026';
+  }
+
+  function clearRecallErrors() {
+    els.recallQuestionError.textContent = '';
+    els.recallAnswerError.textContent = '';
+    els.recallQuestionInput.removeAttribute('aria-invalid');
+    els.recallAnswerInput.removeAttribute('aria-invalid');
+  }
+
+  function clearRecallFieldError(kind) {
+    if (kind === 'question') {
+      if (els.recallQuestionError.textContent) {
+        els.recallQuestionError.textContent = '';
+        els.recallQuestionInput.removeAttribute('aria-invalid');
+      }
+      return;
+    }
+    if (els.recallAnswerError.textContent) {
+      els.recallAnswerError.textContent = '';
+      els.recallAnswerInput.removeAttribute('aria-invalid');
+    }
+  }
+
+  function renderRecall() {
+    if (!els.recallList) {
+      return;
+    }
+    els.recallList.textContent = '';
+    if (!recallApi()) {
+      els.recallCount.textContent = '';
+      const unavailable = document.createElement('li');
+      unavailable.className = 'recall-empty';
+      unavailable.textContent = 'Recall cards are unavailable because the helper script did not load. '
+        + 'Saved cards are preserved and will return when it does.';
+      els.recallList.appendChild(unavailable);
+      return;
+    }
+    const count = state.recallCards.length;
+
+    if (count === 0) {
+      els.recallCount.textContent = '';
+      const empty = document.createElement('li');
+      empty.className = 'recall-empty';
+      empty.textContent = 'No recall cards yet. Save a question and its answer to start the loop.';
+      els.recallList.appendChild(empty);
+      return;
+    }
+
+    els.recallCount.textContent = count === 1 ? '1 card saved.' : count + ' cards saved.';
+    const cards = state.recallCards.slice().reverse();
+    for (const card of cards) {
+      const li = document.createElement('li');
+      li.className = 'recall-item';
+
+      const info = document.createElement('div');
+      info.className = 'recall-item-info';
+
+      const question = document.createElement('p');
+      question.className = 'recall-item-question';
+      question.textContent = card.question;
+
+      const meta = document.createElement('p');
+      meta.className = 'recall-item-meta';
+      const remaining = card.dueAtEntryCount - state.entries.length;
+      if (remaining <= 0) {
+        meta.textContent = 'Due now';
+      } else {
+        meta.textContent = 'Due after ' + remaining + ' more logged focus '
+          + (remaining === 1 ? 'session' : 'sessions');
+      }
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'btn btn-secondary recall-delete';
+      remove.setAttribute('data-delete-id', card.id);
+      remove.setAttribute('aria-label', 'Delete recall card: ' + previewQuestion(card.question));
+      remove.textContent = 'Delete';
+
+      info.appendChild(question);
+      info.appendChild(meta);
+      li.appendChild(info);
+      li.appendChild(remove);
+      els.recallList.appendChild(li);
+    }
+  }
+
+  function submitRecall(event) {
+    event.preventDefault();
+    const helper = recallApi();
+    if (!helper) {
+      announce('Recall cards are unavailable because the helper script did not load.');
+      return;
+    }
+
+    const draft = {
+      question: els.recallQuestionInput.value,
+      answer: els.recallAnswerInput.value
+    };
+    const result = helper.validateDraft(draft);
+    clearRecallErrors();
+
+    if (!result.ok) {
+      if (result.errors.question) {
+        els.recallQuestionError.textContent = result.errors.question;
+        els.recallQuestionInput.setAttribute('aria-invalid', 'true');
+      }
+      if (result.errors.answer) {
+        els.recallAnswerError.textContent = result.errors.answer;
+        els.recallAnswerInput.setAttribute('aria-invalid', 'true');
+      }
+      if (result.errors.question) {
+        els.recallQuestionInput.focus();
+      } else {
+        els.recallAnswerInput.focus();
+      }
+      return;
+    }
+
+    const card = helper.createCard(draft, state.entries.length);
+    if (!card) {
+      return;
+    }
+    state.recallCards.push(card);
+    els.recallQuestionInput.value = '';
+    els.recallAnswerInput.value = '';
+    renderRecall();
+    announce('Recall card saved. It is due now and can appear at your next focus start.');
+    save();
+    els.recallQuestionInput.focus();
+  }
+
+  function handleRecallListClick(event) {
+    const target = event.target;
+    if (!target || typeof target.closest !== 'function') {
+      return;
+    }
+    const button = target.closest('button[data-delete-id]');
+    if (!button || !els.recallList.contains(button)) {
+      return;
+    }
+    const id = button.getAttribute('data-delete-id');
+    const before = state.recallCards.length;
+    state.recallCards = state.recallCards.filter((card) => card.id !== id);
+    if (state.recallCards.length === before) {
+      return;
+    }
+    renderRecall();
+    announce('Recall card deleted.');
+    save();
+    els.recallQuestionInput.focus();
+  }
+
+  function maybeOpenReview(action) {
+    if (state.phase !== 'focus') {
+      return false;
+    }
+    const helper = recallApi();
+    if (!helper || !els.recallDialog) {
+      return false;
+    }
+    if (els.recallDialog.open) {
+      return true;
+    }
+    const card = helper.selectDueCard(state.recallCards, state.entries.length);
+    if (!card) {
+      return false;
+    }
+
+    pendingTimerAction = action;
+    activeReviewCardId = card.id;
+    els.recallQuestion.textContent = card.question;
+    els.recallAnswer.textContent = '';
+    els.recallAttempt.value = '';
+    els.recallAttempt.removeAttribute('aria-invalid');
+    els.recallAttemptError.textContent = '';
+    els.recallAnswerBlock.hidden = true;
+    els.recallReveal.hidden = false;
+    els.recallReveal.disabled = true;
+    if (els.recallDialogStatus) {
+      els.recallDialogStatus.textContent = '';
+    }
+
+    if (typeof els.recallDialog.showModal === 'function') {
+      els.recallDialog.showModal();
+    } else {
+      els.recallDialog.setAttribute('open', '');
+    }
+    els.recallAttempt.focus();
+    announce('Recall check opened. Answer from memory before revealing the saved answer.');
+    return true;
+  }
+
+  function closeReview(startNow) {
+    const action = pendingTimerAction;
+    pendingTimerAction = null;
+    activeReviewCardId = null;
+
+    els.recallQuestion.textContent = '';
+    els.recallAnswer.textContent = '';
+    els.recallAttempt.value = '';
+    els.recallAttempt.removeAttribute('aria-invalid');
+    els.recallAttemptError.textContent = '';
+    els.recallAnswerBlock.hidden = true;
+    els.recallReveal.hidden = false;
+    els.recallReveal.disabled = true;
+    if (els.recallDialogStatus) {
+      els.recallDialogStatus.textContent = '';
+    }
+
+    if (els.recallDialog.open) {
+      if (typeof els.recallDialog.close === 'function') {
+        els.recallDialog.close();
+      } else {
+        els.recallDialog.removeAttribute('open');
+      }
+    }
+
+    if (!startNow || !action) {
+      return;
+    }
+    if (action === 'start') {
+      performStart(true);
+    } else if (action === 'resume') {
+      performResume(true);
+    }
+  }
+
+  function onAttemptInput() {
+    if (els.recallAttemptError.textContent) {
+      els.recallAttemptError.textContent = '';
+      els.recallAttempt.removeAttribute('aria-invalid');
+    }
+    if (!els.recallAnswerBlock.hidden) {
+      return;
+    }
+    els.recallReveal.disabled = els.recallAttempt.value.trim() === '';
+  }
+
+  function revealAnswer() {
+    if (els.recallAttempt.value.trim() === '') {
+      return;
+    }
+    let card = null;
+    if (activeReviewCardId) {
+      card = state.recallCards.find((item) => item.id === activeReviewCardId) || null;
+    }
+    if (!card) {
+      return;
+    }
+    els.recallAttemptError.textContent = '';
+    els.recallAttempt.removeAttribute('aria-invalid');
+    els.recallAnswer.textContent = card.answer;
+    els.recallAnswerBlock.hidden = false;
+    els.recallReveal.hidden = true;
+    const firstRating = els.recallRatingGroup.querySelector('button[data-rating]');
+    if (firstRating) {
+      firstRating.focus();
+    }
+    announceDialog('Saved answer revealed. Rate your recall as remembered, partly remembered, or missed.');
+  }
+
+  function rateReview(rating) {
+    const helper = recallApi();
+    const id = activeReviewCardId;
+    const action = pendingTimerAction;
+    if (!helper || !id) {
+      closeReview(true);
+      return;
+    }
+    const index = state.recallCards.findIndex((card) => card.id === id);
+    if (index === -1) {
+      closeReview(true);
+      return;
+    }
+    const rescheduled = helper.rescheduleCard(state.recallCards[index], rating, state.entries.length);
+    if (!rescheduled) {
+      closeReview(true);
+      return;
+    }
+
+    state.recallCards[index] = rescheduled;
+    const interval = helper.RATING_INTERVALS[rating];
+    const labels = { remembered: 'remembered', partly: 'partly remembered', missed: 'missed' };
+    renderRecall();
+    save();
+    closeReview(true);
+    announce('Rated ' + labels[rating] + '. Next review after ' + interval
+      + ' more logged focus ' + (interval === 1 ? 'session' : 'sessions') + '. '
+      + (action === 'resume' ? 'Focus timer resumed.' : 'Focus timer started.'));
+  }
+
+  function onRatingClick(event) {
+    const target = event.target;
+    if (!target || typeof target.closest !== 'function') {
+      return;
+    }
+    const button = target.closest('button[data-rating]');
+    if (!button || !els.recallRatingGroup.contains(button)) {
+      return;
+    }
+    rateReview(button.getAttribute('data-rating'));
+  }
+
+  function onDialogCancel(event) {
+    event.preventDefault();
+    closeReview(false);
+  }
+
   function renderAll() {
     renderTimer();
     renderLog();
+    renderRecall();
   }
 
   function checkMidnight() {
@@ -536,6 +916,16 @@
     els.exportBtn.addEventListener('click', exportCsv);
     els.form.addEventListener('submit', submitLog);
     els.minutesInput.addEventListener('input', clearLogError);
+    els.recallForm.addEventListener('submit', submitRecall);
+    els.recallQuestionInput.addEventListener('input', () => clearRecallFieldError('question'));
+    els.recallAnswerInput.addEventListener('input', () => clearRecallFieldError('answer'));
+    els.recallList.addEventListener('click', handleRecallListClick);
+    els.recallAttempt.addEventListener('input', onAttemptInput);
+    els.recallReveal.addEventListener('click', revealAnswer);
+    els.recallClose.addEventListener('click', () => closeReview(false));
+    els.recallLater.addEventListener('click', () => closeReview(true));
+    els.recallRatingGroup.addEventListener('click', onRatingClick);
+    els.recallDialog.addEventListener('cancel', onDialogCancel);
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('pagehide', save);
     window.addEventListener('beforeunload', save);

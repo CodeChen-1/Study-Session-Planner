@@ -342,6 +342,202 @@ h1::after {
   flex: 1 1 220px;
 }
 
+/* Recall Loop spans the full width below the timer and log panels. */
+.recall-panel {
+  grid-column: 1 / -1;
+}
+
+.recall-intro {
+  max-width: 72ch;
+}
+
+#recall-form {
+  margin-top: 16px;
+}
+
+.recall-field {
+  margin-bottom: 14px;
+}
+
+.recall-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.recall-field input,
+.recall-field textarea {
+  width: 100%;
+  font: inherit;
+  padding: 10px 12px;
+  border: 2px solid var(--input-border);
+  border-radius: 10px;
+  background: #fffdf7;
+  color: var(--ink);
+}
+
+.recall-field textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.recall-field input[aria-invalid="true"],
+.recall-field textarea[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.recall-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.recall-saved {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.recall-subhead {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+
+.recall-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.recall-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: #fffdf7;
+}
+
+.recall-item-info {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.recall-item-question {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.recall-item-meta {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.recall-delete {
+  flex: 0 0 auto;
+}
+
+.recall-empty {
+  padding: 14px;
+  border: 1px dashed var(--input-border);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+/* Native modal dialog keeps focus trapping and Escape handling. */
+.recall-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 18px 48px rgba(51, 41, 31, 0.28);
+}
+
+.recall-dialog::backdrop {
+  background: rgba(51, 41, 31, 0.45);
+}
+
+.recall-dialog-body {
+  padding: clamp(18px, 4vw, 28px);
+}
+
+.recall-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.recall-dialog-head h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.recall-question-wrap {
+  margin: 18px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--coral-soft);
+}
+
+.recall-label {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.recall-question,
+.recall-answer {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.recall-answer-block {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.recall-answer {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--sage-soft);
+}
+
+.recall-rating {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.recall-rating .btn {
+  flex: 1 1 140px;
+}
+
+.recall-dialog-actions {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
