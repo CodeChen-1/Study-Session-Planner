@@ -28,7 +28,9 @@
     entryCount: document.getElementById('entry-count'),
     form: document.getElementById('log-form'),
     minutesInput: document.getElementById('minutes-input'),
-    logError: document.getElementById('log-error')
+    logError: document.getElementById('log-error'),
+    exportBtn: document.getElementById('export-btn'),
+    exportHint: document.getElementById('export-hint')
   };
 
   const state = {
@@ -377,6 +379,61 @@
     } else {
       els.entryCount.textContent = state.entries.length + ' entries saved.';
     }
+
+    updateExportUi();
+  }
+
+  function csvApi() {
+    return (typeof window !== 'undefined' && window.StudyCsv) || null;
+  }
+
+  function updateExportUi() {
+    const api = csvApi();
+    const count = state.entries.length;
+
+    if (!api) {
+      els.exportBtn.disabled = true;
+      els.exportHint.textContent = 'CSV export is unavailable because its helper script did not load.';
+      return;
+    }
+
+    els.exportBtn.disabled = count === 0;
+    if (count === 0) {
+      els.exportHint.textContent = 'Export is unavailable because no focus sessions are logged yet. '
+        + 'Log a completed focus session to enable it.';
+    } else if (count > MAX_SHOWN_ENTRIES) {
+      els.exportHint.textContent = 'Saves all ' + count + ' logged entries, including ones older '
+        + 'than the latest ' + MAX_SHOWN_ENTRIES + ' shown above, as a CSV file on this device. '
+        + 'Nothing is sent anywhere.';
+    } else if (count === 1) {
+      els.exportHint.textContent = 'Saves the 1 logged entry as a CSV file on this device. '
+        + 'Nothing is sent anywhere.';
+    } else {
+      els.exportHint.textContent = 'Saves all ' + count + ' logged entries as a CSV file on this device. '
+        + 'Nothing is sent anywhere.';
+    }
+  }
+
+  function exportCsv() {
+    const api = csvApi();
+    if (!api || state.entries.length === 0) {
+      return;
+    }
+    const count = state.entries.length;
+    const csvText = api.serializeEntries(state.entries);
+    const filename = api.filenameForDate(new Date());
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 1000);
+    announce('Exported ' + count + ' focus entries to ' + filename + '.');
   }
 
   function renderAll() {
@@ -476,6 +533,7 @@
       }
     });
     els.resetBtn.addEventListener('click', resetTimer);
+    els.exportBtn.addEventListener('click', exportCsv);
     els.form.addEventListener('submit', submitLog);
     els.minutesInput.addEventListener('input', clearLogError);
     document.addEventListener('visibilitychange', onVisibilityChange);

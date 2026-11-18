@@ -8,7 +8,12 @@
   --panel-border: #e6d9bf;
   --ink: #33291f;
   --muted: #6f604c;
-  --track: #ecdfc6;
+  /* Darkened from #ecdfc6 so the unfilled ring arc reads more clearly
+   * against the panel background. */
+  --track: #dccdae;
+  /* Darker than --panel-border so input outlines meet a 3:1 non-text
+   * contrast ratio against --panel. */
+  --input-border: #8f7d63;
   --coral-bright: #e05a33;
   --coral-strong: #b03d18;
   --coral-hover: #9c3714;
@@ -44,12 +49,14 @@ body {
 
 .page-header {
   grid-column: 1 / -1;
+  margin-bottom: 4px;
 }
 
 h1 {
   margin: 0;
   font-size: clamp(1.6rem, 4vw, 2.1rem);
   letter-spacing: 0.01em;
+  line-height: 1.2;
 }
 
 h1::after {
@@ -59,27 +66,32 @@ h1::after {
   height: 4px;
   background: var(--coral-bright);
   border-radius: 2px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 
 .tagline {
-  margin: 4px 0 0;
+  margin: 8px 0 0;
   color: var(--muted);
+  max-width: 46ch;
 }
 
 .panel {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 18px;
-  padding: clamp(16px, 3vw, 26px);
+  padding: clamp(16px, 3vw, 28px);
   box-shadow: 0 10px 24px rgba(51, 41, 31, 0.06);
 }
 
+/* Small uppercase "eyebrow" section labels set the hierarchy below the
+ * page title without adding weight. */
 .panel-title {
-  margin: 0 0 12px;
-  font-size: 1.05rem;
+  margin: 0 0 14px;
+  font-size: 0.8rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .timer-panel {
@@ -102,12 +114,12 @@ h1::after {
   position: relative;
   width: min(280px, 82vw);
   aspect-ratio: 1;
-  margin: 8px auto 4px;
+  margin: 12px auto 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .ring {
@@ -160,7 +172,7 @@ h1::after {
   flex-wrap: wrap;
   gap: 10px;
   justify-content: center;
-  margin-top: 18px;
+  margin-top: 20px;
 }
 
 .btn {
@@ -168,7 +180,8 @@ h1::after {
   font: inherit;
   font-weight: 600;
   font-size: 1rem;
-  padding: 11px 16px;
+  padding: 10px 18px;
+  min-height: 44px;
   border-radius: 12px;
   border: 2px solid transparent;
   cursor: pointer;
@@ -218,13 +231,13 @@ h1::after {
 }
 
 .today-total {
-  margin: 0 0 14px;
-  font-size: 1.15rem;
-  font-weight: 600;
+  margin: 0 0 16px;
+  font-size: 1rem;
+  color: var(--muted);
 }
 
 .today-minutes {
-  font-size: 1.5rem;
+  font-size: 1.6rem;
   font-weight: 700;
   color: var(--coral-strong);
   font-variant-numeric: tabular-nums;
@@ -246,9 +259,10 @@ h1::after {
   flex: 1 1 120px;
   min-width: 0;
   max-width: 160px;
+  min-height: 44px;
   font: inherit;
   padding: 10px 12px;
-  border: 2px solid var(--panel-border);
+  border: 2px solid var(--input-border);
   border-radius: 10px;
   background: #fffdf7;
   color: var(--ink);
@@ -279,7 +293,7 @@ h1::after {
 
 .entry-list {
   list-style: none;
-  margin: 16px 0 0;
+  margin: 18px 0 0;
   padding: 0;
 }
 
@@ -288,7 +302,7 @@ h1::after {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  padding: 9px 2px;
+  padding: 10px 2px;
   border-bottom: 1px solid var(--panel-border);
   font-variant-numeric: tabular-nums;
 }
@@ -305,6 +319,27 @@ h1::after {
 .entry-empty {
   justify-content: center;
   color: var(--muted);
+}
+
+/* Export action sits at the bottom of the log panel, separated from the
+ * on-screen list so "shown here" and "saved to file" read as two things. */
+.export-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.export-row .btn {
+  flex: 0 1 auto;
+}
+
+.export-row .hint {
+  margin: 0;
+  flex: 1 1 220px;
 }
 
 .sr-only {
