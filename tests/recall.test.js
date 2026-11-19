@@ -11,7 +11,8 @@ const STORAGE_KEY = 'study-session-planner.v1';
 const APP_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
 function createElement(tag) {
-  return {
+  const handlers = {};
+  const element = {
     tagName: tag,
     children: [],
     textContent: '',
@@ -23,25 +24,63 @@ function createElement(tag) {
     dataset: {},
     style: {},
     attributes: {},
+    handlers: handlers,
     setAttribute(name, value) {
       this.attributes[name] = String(value);
+    },
+    getAttribute(name) {
+      return Object.prototype.hasOwnProperty.call(this.attributes, name)
+        ? this.attributes[name]
+        : null;
     },
     removeAttribute(name) {
       delete this.attributes[name];
     },
     appendChild(child) {
       this.children.push(child);
+      child.parentNode = this;
       return child;
     },
-    addEventListener() {},
+    addEventListener(type, handler) {
+      handlers[type] = handler;
+    },
     removeEventListener() {},
     focus() {},
-    click() {},
+    click() {
+      let current = this;
+      const event = {
+        target: this,
+        preventDefault() {}
+      };
+      while (current) {
+        if (current.handlers && current.handlers.click) {
+          current.handlers.click(event);
+        }
+        current = current.parentNode;
+      }
+    },
     remove() {},
     contains() {
       return false;
     },
-    querySelector() {
+    querySelector(selector) {
+      const matches = (candidate) => {
+        if (selector.charAt(0) === '#') {
+          return candidate.id === selector.slice(1);
+        }
+        if (selector === 'input[name="minutes"]') {
+          return candidate.tagName === 'input' && candidate.name === 'minutes';
+        }
+        return false;
+      };
+      const pending = this.children.slice();
+      while (pending.length > 0) {
+        const candidate = pending.shift();
+        if (matches(candidate)) {
+          return candidate;
+        }
+        pending.push(...candidate.children);
+      }
       return null;
     },
     showModal() {
@@ -51,9 +90,19 @@ function createElement(tag) {
       this.open = false;
     }
   };
+  Object.defineProperty(element, 'textContent', {
+    get() {
+      return this._textContent || '';
+    },
+    set(value) {
+      this._textContent = String(value);
+      this.children.length = 0;
+    }
+  });
+  return element;
 }
 
-function runAppWithoutRecallHelper(storedValue) {
+function runAppWithoutRecallHelper(storedValue, includeRecallHelper) {
   const elements = new Map();
   const document = {
     activeElement: null,
@@ -71,13 +120,18 @@ function runAppWithoutRecallHelper(storedValue) {
     addEventListener() {}
   };
   const storage = new Map();
+  const confirmations = [];
   if (typeof storedValue === 'string') {
     storage.set(STORAGE_KEY, storedValue);
   }
   const listeners = {};
   const window = {
     StudyCsv: undefined,
-    StudyRecall: undefined,
+    StudyRecall: includeRecallHelper ? recall : undefined,
+    confirm(message) {
+      confirmations.push(message);
+      return true;
+    },
     setTimeout() {
       return 0;
     },
@@ -110,6 +164,7 @@ function runAppWithoutRecallHelper(storedValue) {
     storedValue() {
       return storage.get(STORAGE_KEY);
     },
+    confirmations,
     triggerSave() {
       listeners.pagehide();
     }
@@ -211,7 +266,10 @@ test('a newly created card is due at the current logged entry count', () => {
     question: draft.question,
     answer: draft.answer,
     createdAt: 5000,
-    dueAtEntryCount: 4
+    dueAtEntryCount: 4,
+    reviewCount: 0,
+    rememberedStreak: 0,
+    lastRating: null
   });
   assert.equal(card.dueAtEntryCount, 4);
 });
@@ -268,6 +326,188 @@ test('selection ignores a malformed card but keeps a valid due card', () => {
   assert.equal(picked.id, 'valid');
 });
 
+test('legacy cards gain adaptive recall progress defaults without losing their content', () => {
+  const card = recall.normalizeCard(baseCard());
+
+  assert.ok(card);
+  assert.equal(card.question, 'What is spaced recall?');
+  assert.equal(card.answer, 'Reviewing material after increasing gaps.');
+  assert.equal(card.reviewCount, 0);
+  assert.equal(card.rememberedStreak, 0);
+  assert.equal(card.lastRating, null);
+});
+
+test('remembered intervals grow with consecutive successful recall and cap at 36 focus sessions', () => {
+  const intervals = [];
+  for (let streak = 0; streak <= 6; streak += 1) {
+    intervals.push(recall.nextDueAtEntryCount('remembered', 10, streak) - 10);
+  }
+
+  assert.deepEqual(intervals, [3, 6, 12, 24, 36, 36, 36]);
+});
+
+test('remembered reviews increase the review count and streak', () => {
+  const result = recall.rescheduleCard(baseCard({
+    reviewCount: 2,
+    rememberedStreak: 1,
+    lastRating: 'remembered'
+  }), 'remembered', 4);
+
+  assert.ok(result);
+  assert.equal(result.dueAtEntryCount, 10);
+  assert.equal(result.reviewCount, 3);
+  assert.equal(result.rememberedStreak, 2);
+  assert.equal(result.lastRating, 'remembered');
+});
+
+test('partly and missed ratings reset the success streak and keep the review history', () => {
+  const prior = baseCard({
+    reviewCount: 8,
+    rememberedStreak: 4,
+    lastRating: 'remembered'
+  });
+  const partly = recall.rescheduleCard(prior, 'partly', 4);
+  const missed = recall.rescheduleCard(prior, 'missed', 4);
+
+  assert.equal(partly.dueAtEntryCount, 6);
+  assert.equal(partly.reviewCount, 9);
+  assert.equal(partly.rememberedStreak, 0);
+  assert.equal(partly.lastRating, 'partly');
+  assert.equal(missed.dueAtEntryCount, 5);
+  assert.equal(missed.reviewCount, 9);
+  assert.equal(missed.rememberedStreak, 0);
+  assert.equal(missed.lastRating, 'missed');
+});
+
+test('recall dashboard summarizes due, rotating, long-term, and reviewed cards', () => {
+  const stored = Object.assign({}, storedSession, {
+    recallCards: [
+      baseCard({ id: 'due-card', dueAtEntryCount: 0 }),
+      baseCard({
+        id: 'long-term-card',
+        dueAtEntryCount: 4,
+        reviewCount: 4,
+        rememberedStreak: 4,
+        lastRating: 'remembered'
+      })
+    ]
+  });
+  const app = runAppWithoutRecallHelper(JSON.stringify(stored), true);
+
+  assert.equal(app.elements.get('recall-due-count').textContent, '1');
+  assert.equal(app.elements.get('recall-rotation-count').textContent, '1');
+  assert.equal(app.elements.get('recall-long-term-count').textContent, '1');
+  assert.equal(app.elements.get('recall-review-count').textContent, '4');
+  const longTermMeta = app.elements.get('recall-list').children[0].children[0].children[1];
+  assert.match(longTermMeta.textContent, /Long-term · 4 reviews · Last: remembered/);
+});
+
+test('focus history shows six recent entries and full-history view includes those six', () => {
+  const entries = [];
+  for (let i = 1; i <= 8; i += 1) {
+    entries.push({ minutes: i, ts: 1000 + i });
+  }
+  const stored = Object.assign({}, storedSession, { entries: entries });
+  const app = runAppWithoutRecallHelper(JSON.stringify(stored));
+  const list = app.elements.get('entry-list');
+  const toggle = app.elements.get('entry-history-toggle');
+
+  assert.equal(list.children.length, 6);
+  assert.deepEqual(list.children.map((item) => item.children[2].textContent), [
+    '8 min', '7 min', '6 min', '5 min', '4 min', '3 min'
+  ]);
+  assert.deepEqual(list.children.map((item) => item.children[0].textContent), [
+    '#8', '#7', '#6', '#5', '#4', '#3'
+  ]);
+  assert.equal(toggle.hidden, false);
+  assert.equal(toggle.textContent, 'Show all 8 sessions');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+
+  toggle.click();
+  assert.equal(list.children.length, 8);
+  assert.deepEqual(list.children.map((item) => item.children[0].textContent), [
+    '#8', '#7', '#6', '#5', '#4', '#3', '#2', '#1'
+  ]);
+  assert.equal(toggle.textContent, 'Show recent 6 sessions');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+
+  toggle.click();
+  assert.equal(list.children.length, 6);
+});
+
+test('focus history hides its full-history control at six or fewer sessions', () => {
+  const stored = Object.assign({}, storedSession, {
+    entries: Array.from({ length: 6 }, (_, index) => ({ minutes: 25, ts: 1000 + index }))
+  });
+  const app = runAppWithoutRecallHelper(JSON.stringify(stored));
+
+  assert.equal(app.elements.get('entry-list').children.length, 6);
+  assert.equal(app.elements.get('entry-history-toggle').hidden, true);
+});
+
+test('editing a session updates its minutes and the corresponding totals', () => {
+  const stored = Object.assign({}, storedSession, {
+    entries: [
+      { minutes: 25, ts: Date.now() },
+      { minutes: 40, ts: Date.now() + 1 }
+    ]
+  });
+  const app = runAppWithoutRecallHelper(JSON.stringify(stored), true);
+  const list = app.elements.get('entry-list');
+
+  list.children[0].children[3].click();
+  const form = list.children[0].children[0];
+  const input = form.querySelector('input[name="minutes"]');
+  input.value = '90';
+  list.handlers.submit({ target: form, preventDefault() {} });
+
+  const saved = JSON.parse(app.storedValue());
+  assert.equal(saved.entries[1].minutes, 90);
+  assert.equal(app.elements.get('today-total').textContent, '115');
+});
+
+test('deleting one session updates totals and preserves remaining recall intervals', () => {
+  const stored = Object.assign({}, storedSession, {
+    entries: [
+      { minutes: 25, ts: Date.now() },
+      { minutes: 40, ts: Date.now() + 1 }
+    ],
+    recallCards: [baseCard({ dueAtEntryCount: 5 })]
+  });
+  const app = runAppWithoutRecallHelper(JSON.stringify(stored), true);
+  const list = app.elements.get('entry-list');
+
+  list.children[0].children[3].click();
+  const form = list.children[0].children[0];
+  const deleteButton = form.children[3].children.find((child) => child.dataset.entryAction === 'delete');
+  deleteButton.click();
+
+  const saved = JSON.parse(app.storedValue());
+  assert.equal(saved.entries.length, 1);
+  assert.equal(saved.entries[0].minutes, 25);
+  assert.equal(saved.recallCards[0].dueAtEntryCount, 4);
+  assert.equal(app.elements.get('today-total').textContent, '25');
+  assert.match(app.confirmations[0], /Delete focus session #2/);
+});
+
+test('reset all focus logs clears entries but preserves recall cards and remaining gaps', () => {
+  const entries = Array.from({ length: 8 }, (_, index) => ({ minutes: 25, ts: Date.now() + index }));
+  const stored = Object.assign({}, storedSession, {
+    entries: entries,
+    recallCards: [baseCard({ dueAtEntryCount: 10, reviewCount: 2 })]
+  });
+  const app = runAppWithoutRecallHelper(JSON.stringify(stored), true);
+
+  app.elements.get('reset-log-btn').click();
+
+  const saved = JSON.parse(app.storedValue());
+  assert.deepEqual(saved.entries, []);
+  assert.equal(saved.recallCards.length, 1);
+  assert.equal(saved.recallCards[0].dueAtEntryCount, 2);
+  assert.equal(saved.recallCards[0].reviewCount, 2);
+  assert.equal(app.elements.get('today-total').textContent, '0');
+  assert.match(app.confirmations[0], /Reset all 8 focus session logs/);
+});
 test('remembered reschedules three logged entries from the current count', () => {
   const result = recall.rescheduleCard(baseCard({ dueAtEntryCount: 2 }), 'remembered', 4);
   assert.ok(result);

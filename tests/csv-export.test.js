@@ -28,7 +28,7 @@ test('rows use ISO 8601 UTC timestamps and integer minutes', () => {
   assert.match(new Date(ts).toISOString(), ISO_8601_UTC);
 });
 
-test('every valid stored record is exported, beyond the latest 50 shown on screen', () => {
+test('every valid stored record is exported, including sessions beyond the recent rows', () => {
   const base = Date.UTC(2026, 0, 1, 8, 0, 0);
   const entries = [];
   for (let i = 0; i < 75; i += 1) {

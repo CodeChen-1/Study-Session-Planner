@@ -13,8 +13,11 @@
 
   const MAX_QUESTION_LENGTH = 200;
   const MAX_ANSWER_LENGTH = 2000;
+  const MAX_REVIEW_COUNT = 1000000;
+  const LONG_TERM_STREAK = 4;
+  const REMEMBERED_INTERVALS = Object.freeze([3, 6, 12, 24, 36]);
   const RATING_INTERVALS = Object.freeze({
-    remembered: 3,
+    remembered: REMEMBERED_INTERVALS[0],
     partly: 2,
     missed: 1
   });
@@ -75,6 +78,23 @@
     if (!Number.isInteger(raw.dueAtEntryCount) || raw.dueAtEntryCount < 0) {
       return false;
     }
+    const reviewCount = typeof raw.reviewCount === 'undefined' ? 0 : raw.reviewCount;
+    const rememberedStreak = typeof raw.rememberedStreak === 'undefined'
+      ? 0
+      : raw.rememberedStreak;
+    const lastRating = typeof raw.lastRating === 'undefined' ? null : raw.lastRating;
+    if (!Number.isInteger(reviewCount) || reviewCount < 0 || reviewCount > MAX_REVIEW_COUNT) {
+      return false;
+    }
+    if (!Number.isInteger(rememberedStreak)
+      || rememberedStreak < 0
+      || rememberedStreak > LONG_TERM_STREAK) {
+      return false;
+    }
+    if (lastRating !== null
+      && !Object.prototype.hasOwnProperty.call(RATING_INTERVALS, lastRating)) {
+      return false;
+    }
     return true;
   }
 
@@ -87,7 +107,10 @@
       question: raw.question.trim(),
       answer: raw.answer.trim(),
       createdAt: raw.createdAt,
-      dueAtEntryCount: raw.dueAtEntryCount
+      dueAtEntryCount: raw.dueAtEntryCount,
+      reviewCount: typeof raw.reviewCount === 'undefined' ? 0 : raw.reviewCount,
+      rememberedStreak: typeof raw.rememberedStreak === 'undefined' ? 0 : raw.rememberedStreak,
+      lastRating: typeof raw.lastRating === 'undefined' ? null : raw.lastRating
     };
   }
 
@@ -130,7 +153,10 @@
       question: result.question,
       answer: result.answer,
       createdAt: now,
-      dueAtEntryCount: dueAtEntryCount
+      dueAtEntryCount: dueAtEntryCount,
+      reviewCount: 0,
+      rememberedStreak: 0,
+      lastRating: null
     };
   }
 
@@ -181,14 +207,25 @@
     return best;
   }
 
-  function nextDueAtEntryCount(rating, entryCount) {
+  function intervalFor(rating, rememberedStreak) {
     if (!Object.prototype.hasOwnProperty.call(RATING_INTERVALS, rating)) {
       return null;
     }
+    if (rating !== 'remembered') {
+      return RATING_INTERVALS[rating];
+    }
+    const streak = Number.isInteger(rememberedStreak) && rememberedStreak >= 0
+      ? Math.min(rememberedStreak, REMEMBERED_INTERVALS.length - 1)
+      : 0;
+    return REMEMBERED_INTERVALS[streak];
+  }
+
+  function nextDueAtEntryCount(rating, entryCount, rememberedStreak) {
     if (!Number.isInteger(entryCount) || entryCount < 0) {
       return null;
     }
-    return entryCount + RATING_INTERVALS[rating];
+    const interval = intervalFor(rating, rememberedStreak);
+    return interval === null ? null : entryCount + interval;
   }
 
   function rescheduleCard(card, rating, entryCount) {
@@ -196,7 +233,7 @@
     if (!normalized) {
       return null;
     }
-    const nextDue = nextDueAtEntryCount(rating, entryCount);
+    const nextDue = nextDueAtEntryCount(rating, entryCount, normalized.rememberedStreak);
     if (nextDue === null) {
       return null;
     }
@@ -205,13 +242,21 @@
       question: normalized.question,
       answer: normalized.answer,
       createdAt: normalized.createdAt,
-      dueAtEntryCount: nextDue
+      dueAtEntryCount: nextDue,
+      reviewCount: Math.min(normalized.reviewCount + 1, MAX_REVIEW_COUNT),
+      rememberedStreak: rating === 'remembered'
+        ? Math.min(normalized.rememberedStreak + 1, LONG_TERM_STREAK)
+        : 0,
+      lastRating: rating
     };
   }
 
   return {
     MAX_QUESTION_LENGTH: MAX_QUESTION_LENGTH,
     MAX_ANSWER_LENGTH: MAX_ANSWER_LENGTH,
+    MAX_REVIEW_COUNT: MAX_REVIEW_COUNT,
+    LONG_TERM_STREAK: LONG_TERM_STREAK,
+    REMEMBERED_INTERVALS: REMEMBERED_INTERVALS,
     RATING_INTERVALS: RATING_INTERVALS,
     validateDraft: validateDraft,
     isValidCard: isValidCard,
