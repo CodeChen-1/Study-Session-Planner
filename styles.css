@@ -180,6 +180,28 @@ h1::after {
   font-variant-numeric: tabular-nums;
 }
 
+.elapsed-readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.elapsed-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.elapsed-time {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .controls {
   display: flex;
   flex-direction: column;
@@ -373,11 +395,6 @@ h1::after {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-}
-
-.entry-history-toggle {
-  width: 100%;
-  margin-top: 12px;
 }
 
 .entry-edit-button {

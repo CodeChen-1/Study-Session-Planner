@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="description" content="A calm study session planner with a 25-minute focus timer, 5-minute breaks, and a manual completed-focus log.">
   <title>Study Session Planner</title>
-  <link rel="stylesheet" href="styles.css?v=20261119-4">
+  <link rel="stylesheet" href="styles.css?v=20261119-5">
 </head>
 <body>
   <main class="layout">
@@ -25,6 +25,10 @@
         <p class="phase-badge" id="phase-badge">Focus</p>
         <div class="time-display" id="time-display" role="timer" aria-label="Time remaining">25:00</div>
       </div>
+      <p class="elapsed-readout">
+        <span class="elapsed-label">Elapsed</span>
+        <span class="elapsed-time" id="elapsed-time">00:00</span>
+      </p>
       <div class="controls" role="group" aria-label="Timer controls">
         <button type="button" class="btn btn-primary" id="start-btn" aria-label="Start focus timer">Start</button>
         <button type="button" class="btn btn-secondary" id="toggle-btn" aria-label="Pause timer" disabled>Pause</button>
@@ -48,7 +52,6 @@
         <p class="error" id="log-error" aria-live="polite"></p>
       </form>
       <ol class="entry-list" id="entry-list" tabindex="-1" aria-label="Focus session history"></ol>
-      <button type="button" class="btn btn-secondary entry-history-toggle" id="entry-history-toggle" aria-controls="entry-list" aria-expanded="false" hidden></button>
       <p class="hint" id="entry-count"></p>
       <div class="export-row">
         <button type="button" class="btn btn-secondary" id="export-btn" aria-describedby="export-hint" disabled>Download CSV</button>
@@ -133,6 +136,6 @@
 
   <script src="csv.js"></script>
   <script src="recall.js?v=20261119-2"></script>
-  <script src="app.js?v=20261119-4"></script>
+  <script src="app.js?v=20261119-5"></script>
 </body>
 </html>

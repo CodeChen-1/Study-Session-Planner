@@ -9,6 +9,7 @@ const recall = require('../recall.js');
 
 const STORAGE_KEY = 'study-session-planner.v1';
 const APP_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+const INDEX_SOURCE = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 
 function createElement(tag) {
   const handlers = {};
@@ -102,7 +103,10 @@ function createElement(tag) {
   return element;
 }
 
-function runAppWithoutRecallHelper(storedValue, includeRecallHelper) {
+function runAppWithoutRecallHelper(storedValue, includeRecallHelper, options) {
+  const settings = options || {};
+  const hasFixedClock = typeof settings.now === 'number';
+  const clock = { now: hasFixedClock ? settings.now : null };
   const elements = new Map();
   const document = {
     activeElement: null,
@@ -125,6 +129,7 @@ function runAppWithoutRecallHelper(storedValue, includeRecallHelper) {
     storage.set(STORAGE_KEY, storedValue);
   }
   const listeners = {};
+  let tickHandler = null;
   const window = {
     StudyCsv: undefined,
     StudyRecall: includeRecallHelper ? recall : undefined,
@@ -136,8 +141,9 @@ function runAppWithoutRecallHelper(storedValue, includeRecallHelper) {
       return 0;
     },
     clearTimeout() {},
-    setInterval() {
-      return 0;
+    setInterval(handler) {
+      tickHandler = handler;
+      return 1;
     },
     addEventListener(type, handler) {
       listeners[type] = handler;
@@ -157,6 +163,23 @@ function runAppWithoutRecallHelper(storedValue, includeRecallHelper) {
     console: { warn() {}, log() {}, error() {} }
   };
 
+  if (hasFixedClock) {
+    class FakeDate extends Date {
+      constructor(...args) {
+        if (args.length === 0) {
+          super(clock.now);
+        } else {
+          super(...args);
+        }
+      }
+
+      static now() {
+        return clock.now;
+      }
+    }
+    context.Date = FakeDate;
+  }
+
   vm.runInNewContext(APP_SOURCE, context, { filename: 'app.js' });
 
   return {
@@ -165,6 +188,14 @@ function runAppWithoutRecallHelper(storedValue, includeRecallHelper) {
       return storage.get(STORAGE_KEY);
     },
     confirmations,
+    advanceNow(ms) {
+      clock.now += ms;
+    },
+    runTick() {
+      if (tickHandler) {
+        tickHandler();
+      }
+    },
     triggerSave() {
       listeners.pagehide();
     }
@@ -402,7 +433,7 @@ test('recall dashboard summarizes due, rotating, long-term, and reviewed cards',
   assert.match(longTermMeta.textContent, /Long-term · 4 reviews · Last: remembered/);
 });
 
-test('focus history shows six recent entries and full-history view includes those six', () => {
+test('focus history shows every saved entry newest first without a history toggle', () => {
   const entries = [];
   for (let i = 1; i <= 8; i += 1) {
     entries.push({ minutes: i, ts: 1000 + i });
@@ -410,39 +441,122 @@ test('focus history shows six recent entries and full-history view includes thos
   const stored = Object.assign({}, storedSession, { entries: entries });
   const app = runAppWithoutRecallHelper(JSON.stringify(stored));
   const list = app.elements.get('entry-list');
-  const toggle = app.elements.get('entry-history-toggle');
 
-  assert.equal(list.children.length, 6);
-  assert.deepEqual(list.children.map((item) => item.children[2].textContent), [
-    '8 min', '7 min', '6 min', '5 min', '4 min', '3 min'
-  ]);
-  assert.deepEqual(list.children.map((item) => item.children[0].textContent), [
-    '#8', '#7', '#6', '#5', '#4', '#3'
-  ]);
-  assert.equal(toggle.hidden, false);
-  assert.equal(toggle.textContent, 'Show all 8 sessions');
-  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
-
-  toggle.click();
   assert.equal(list.children.length, 8);
+  assert.deepEqual(list.children.map((item) => item.children[2].textContent), [
+    '8 min', '7 min', '6 min', '5 min', '4 min', '3 min', '2 min', '1 min'
+  ]);
   assert.deepEqual(list.children.map((item) => item.children[0].textContent), [
     '#8', '#7', '#6', '#5', '#4', '#3', '#2', '#1'
   ]);
-  assert.equal(toggle.textContent, 'Show recent 6 sessions');
-  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
-
-  toggle.click();
-  assert.equal(list.children.length, 6);
+  assert.equal(app.elements.has('entry-history-toggle'), false);
+  assert.ok(!INDEX_SOURCE.includes('entry-history-toggle'));
+  assert.ok(!APP_SOURCE.includes('showFullHistory'));
+  assert.ok(!APP_SOURCE.includes('RECENT_ENTRY_COUNT'));
+  assert.equal(app.elements.get('entry-count').textContent, '8 entries saved.');
+  assert.equal(list.tabIndex, 0);
 });
 
-test('focus history hides its full-history control at six or fewer sessions', () => {
+test('focus history keeps all six entries visible and the scroll region keyboard accessible', () => {
   const stored = Object.assign({}, storedSession, {
     entries: Array.from({ length: 6 }, (_, index) => ({ minutes: 25, ts: 1000 + index }))
   });
   const app = runAppWithoutRecallHelper(JSON.stringify(stored));
+  const list = app.elements.get('entry-list');
 
-  assert.equal(app.elements.get('entry-list').children.length, 6);
-  assert.equal(app.elements.get('entry-history-toggle').hidden, true);
+  assert.equal(list.children.length, 6);
+  assert.deepEqual(list.children.map((item) => item.children[0].textContent), [
+    '#6', '#5', '#4', '#3', '#2', '#1'
+  ]);
+  assert.equal(app.elements.has('entry-history-toggle'), false);
+  assert.equal(app.elements.get('entry-count').textContent, '6 entries saved.');
+  assert.equal(list.tabIndex, 0);
+});
+
+test('empty focus history keeps the empty state and is not focusable', () => {
+  const stored = Object.assign({}, storedSession, { entries: [] });
+  const app = runAppWithoutRecallHelper(JSON.stringify(stored));
+  const list = app.elements.get('entry-list');
+
+  assert.equal(list.children.length, 1);
+  assert.equal(list.children[0].className, 'entry-empty');
+  assert.equal(app.elements.get('entry-count').textContent, '0 entries saved.');
+  assert.equal(list.tabIndex, -1);
+});
+
+test('elapsed readout starts at 00:00 and tracks running, paused, resumed, and reset states', () => {
+  const start = 1700000000000;
+  const app = runAppWithoutRecallHelper(null, false, { now: start });
+  const elapsed = () => app.elements.get('elapsed-time').textContent;
+
+  assert.equal(elapsed(), '00:00');
+
+  app.elements.get('start-btn').click();
+  app.advanceNow(5000);
+  app.runTick();
+  assert.equal(elapsed(), '00:05');
+
+  app.elements.get('toggle-btn').click();
+  assert.equal(elapsed(), '00:05');
+  app.advanceNow(4000);
+  app.runTick();
+  assert.equal(elapsed(), '00:05');
+
+  app.elements.get('toggle-btn').click();
+  app.advanceNow(3000);
+  app.runTick();
+  assert.equal(elapsed(), '00:08');
+
+  app.elements.get('reset-btn').click();
+  assert.equal(elapsed(), '00:00');
+  assert.equal(app.elements.get('time-display').textContent, '25:00');
+
+  app.triggerSave();
+  const saved = JSON.parse(app.storedValue());
+  assert.deepEqual(Object.keys(saved.timer).sort(), ['endsAt', 'phase', 'remainingMs', 'running']);
+});
+
+test('elapsed readout returns to 00:00 when the timer advances to the next phase', () => {
+  const start = 1700000000000;
+  const app = runAppWithoutRecallHelper(null, false, { now: start });
+
+  app.elements.get('start-btn').click();
+  app.advanceNow(25 * 60 * 1000 + 1);
+  app.runTick();
+
+  assert.equal(app.elements.get('phase-badge').textContent, 'Break');
+  assert.equal(app.elements.get('time-display').textContent, '05:00');
+  assert.equal(app.elements.get('elapsed-time').textContent, '00:00');
+});
+
+test('elapsed readout reflects a restored partial timer without changing the stored schema', () => {
+  const now = 1700000000000;
+  const running = {
+    version: 1,
+    timer: {
+      phase: 'focus',
+      running: true,
+      remainingMs: 15 * 60 * 1000,
+      endsAt: now + 15 * 60 * 1000
+    },
+    entries: [],
+    recallCards: []
+  };
+  const app = runAppWithoutRecallHelper(JSON.stringify(running), false, { now });
+
+  assert.equal(app.elements.get('time-display').textContent, '15:00');
+  assert.equal(app.elements.get('elapsed-time').textContent, '10:00');
+
+  const paused = {
+    version: 1,
+    timer: { phase: 'break', running: false, remainingMs: 2 * 60 * 1000, endsAt: null },
+    entries: [],
+    recallCards: []
+  };
+  const pausedApp = runAppWithoutRecallHelper(JSON.stringify(paused), false, { now });
+
+  assert.equal(pausedApp.elements.get('time-display').textContent, '02:00');
+  assert.equal(pausedApp.elements.get('elapsed-time').textContent, '03:00');
 });
 
 test('editing a session updates its minutes and the corresponding totals', () => {

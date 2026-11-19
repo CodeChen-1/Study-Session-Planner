@@ -7,7 +7,6 @@
   const MAX_LOG_MINUTES = 1440;
   const DEFAULT_LOG_MINUTES = 25;
   const MAX_ENTRIES = 2000;
-  const RECENT_ENTRY_COUNT = 6;
   const AUTOSAVE_MS = 5000;
   const TICK_MS = 250;
   const RING_RADIUS = 104;
@@ -17,6 +16,7 @@
     timerHeading: document.getElementById('timer-heading'),
     timerPanel: document.getElementById('timer-panel'),
     timeDisplay: document.getElementById('time-display'),
+    elapsedDisplay: document.getElementById('elapsed-time'),
     phaseBadge: document.getElementById('phase-badge'),
     ring: document.getElementById('ring-progress'),
     startBtn: document.getElementById('start-btn'),
@@ -25,7 +25,6 @@
     status: document.getElementById('status'),
     todayTotal: document.getElementById('today-total'),
     entryList: document.getElementById('entry-list'),
-    entryHistoryToggle: document.getElementById('entry-history-toggle'),
     resetLogBtn: document.getElementById('reset-log-btn'),
     entryCount: document.getElementById('entry-count'),
     form: document.getElementById('log-form'),
@@ -62,7 +61,6 @@
     endsAt: null,
     remainingMs: PHASE_DURATIONS.focus,
     entries: [],
-    showFullHistory: false,
     editingEntryIndex: null,
     recallCards: []
   };
@@ -94,6 +92,13 @@
     return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
   }
 
+  function formatElapsed(ms) {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+  }
+
   function isRunning() {
     return state.endsAt !== null;
   }
@@ -102,6 +107,11 @@
     return state.endsAt === null
       ? state.remainingMs
       : Math.max(0, state.endsAt - Date.now());
+  }
+
+  function currentElapsedMs() {
+    const full = PHASE_DURATIONS[state.phase];
+    return Math.min(full, Math.max(0, full - currentRemainingMs()));
   }
 
   function todayTotalMinutes() {
@@ -394,6 +404,7 @@
     const remaining = currentRemainingMs();
     const fraction = Math.min(1, Math.max(0, remaining / PHASE_DURATIONS[state.phase]));
     els.timeDisplay.textContent = formatClock(remaining);
+    els.elapsedDisplay.textContent = formatElapsed(currentElapsedMs());
     els.ring.style.strokeDasharray = RING_CIRCUMFERENCE + 'px';
     els.ring.style.strokeDashoffset = RING_CIRCUMFERENCE * (1 - fraction) + 'px';
     els.timerPanel.dataset.phase = state.phase;
@@ -405,16 +416,15 @@
   function renderLog() {
     els.todayTotal.textContent = String(todayTotalMinutes());
     els.entryList.textContent = '';
-    const shown = state.entries.slice().reverse();
-    const recent = state.showFullHistory ? shown : shown.slice(0, RECENT_ENTRY_COUNT);
+    const entries = state.entries.slice().reverse();
 
-    if (recent.length === 0) {
+    if (entries.length === 0) {
       const li = document.createElement('li');
       li.className = 'entry-empty';
       li.textContent = 'No focus sessions logged yet.';
       els.entryList.appendChild(li);
     } else {
-      recent.forEach((entry, index) => {
+      entries.forEach((entry, index) => {
         const entryIndex = state.entries.length - index - 1;
         if (entryIndex === state.editingEntryIndex) {
           appendEntryEditor(els.entryList, entry, entryIndex);
@@ -424,41 +434,16 @@
       });
     }
 
-    const hasEarlierEntries = state.entries.length > RECENT_ENTRY_COUNT;
-    if (!hasEarlierEntries) {
-      state.showFullHistory = false;
-    }
-    els.entryHistoryToggle.hidden = !hasEarlierEntries;
-    els.entryHistoryToggle.setAttribute('aria-expanded', String(
-      hasEarlierEntries && state.showFullHistory
-    ));
-    els.entryHistoryToggle.textContent = state.showFullHistory
-      ? 'Show recent ' + RECENT_ENTRY_COUNT
-        + (RECENT_ENTRY_COUNT === 1 ? ' session' : ' sessions')
-      : 'Show all ' + state.entries.length
-        + (state.entries.length === 1 ? ' session' : ' sessions');
-    els.entryList.tabIndex = hasEarlierEntries ? 0 : -1;
+    els.entryList.tabIndex = entries.length > 0 ? 0 : -1;
     els.resetLogBtn.disabled = state.entries.length === 0;
 
-    if (state.entries.length > RECENT_ENTRY_COUNT) {
-      els.entryCount.textContent = state.showFullHistory
-        ? 'Showing all ' + state.entries.length + ' sessions in the scrollable list.'
-        : state.entries.length + ' sessions saved. The latest '
-          + RECENT_ENTRY_COUNT + ' are shown by default.';
-    } else if (state.entries.length === 1) {
+    if (state.entries.length === 1) {
       els.entryCount.textContent = '1 entry saved.';
     } else {
       els.entryCount.textContent = state.entries.length + ' entries saved.';
     }
 
     updateExportUi();
-  }
-
-  function toggleSessionHistory() {
-    state.showFullHistory = !state.showFullHistory;
-    state.editingEntryIndex = null;
-    els.entryList.scrollTop = 0;
-    renderLog();
   }
 
   function appendEntry(list, entry, sessionNumber, entryIndex) {
@@ -1056,7 +1041,6 @@
 
     rebaseRecallSchedules(count, 0);
     state.entries = [];
-    state.showFullHistory = false;
     state.editingEntryIndex = null;
     renderAll();
     save();
@@ -1173,7 +1157,6 @@
     els.exportBtn.addEventListener('click', exportCsv);
     els.form.addEventListener('submit', submitLog);
     els.minutesInput.addEventListener('input', clearLogError);
-    els.entryHistoryToggle.addEventListener('click', toggleSessionHistory);
     els.resetLogBtn.addEventListener('click', resetAllLogs);
     els.entryList.addEventListener('click', handleEntryListClick);
     els.entryList.addEventListener('submit', handleEntryListSubmit);
